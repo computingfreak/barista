@@ -1,0 +1,69 @@
+:root {
+  --bg: #0b1220;
+  --card: #141f36;
+  --text: #e9f0ff;
+  --muted: #afbddb;
+  --accent: #6bdcff;
+  --accent-2: #8affb8;
+  --danger: #ff8f8f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: linear-gradient(180deg, #08101f, #0f1a31);
+  color: var(--text);
+}
+header, footer, main { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+.card {
+  background: var(--card);
+  border: 1px solid #2c3c62;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.8rem;
+}
+label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; color: var(--muted); }
+input, select, button {
+  border-radius: 8px;
+  border: 1px solid #33466f;
+  background: #0b1630;
+  color: var(--text);
+  padding: 0.55rem 0.6rem;
+}
+button {
+  cursor: pointer;
+  background: linear-gradient(90deg, #0978f8, #03a6d7);
+  border: none;
+  font-weight: 600;
+}
+button.secondary { background: #1c2b4b; }
+button:hover { filter: brightness(1.08); }
+.chip-row, .actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+.kpi {
+  background: #101a2e;
+  border: 1px solid #30456f;
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+.kpi strong { display: block; font-size: 1.2rem; color: var(--accent-2); }
+.subtle { color: var(--muted); margin-top: -0.2rem; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 900px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+.milestones { margin-top: 1rem; color: var(--muted); }
+a { color: var(--accent); }
+#scenarioTable table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+#scenarioTable th, #scenarioTable td { border: 1px solid #34486d; padding: 0.5rem; text-align: left; }
+#scenarioTable th { background: #1a2a4a; }
