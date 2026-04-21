@@ -9,13 +9,13 @@ const defaults = {
   domesticEquity: 33000000,
   intlEquity: 330000,
   epfCurrent: 1800000,
-  epfAnnual: 396000,
+  epfMonthly: 33000,
   ppfCurrent: 1300000,
   ppfAnnual: 150000,
   npsCurrent: 0,
   npsAnnual: 0,
-  debtCorpus: 1000000,
-  cashCorpus: 500000,
+  debtCorpus: 0,
+  emergencyFund: 600000,
   monthlyExpenses: 100000,
   monthlyInvest: 100000,
   annualInsurance: 200000,
@@ -111,7 +111,7 @@ function scenarioTweaks(v) {
 function fireConfig(v) {
   const map = {
     lean: { multiple: 22 },
-    coast: { multiple: 25 },
+    coast: { multiple: 25, coast: true },
     regular: { multiple: 25 },
     barista: { multiple: 27 },
     fat: { multiple: 33 },
@@ -121,12 +121,30 @@ function fireConfig(v) {
 
 function lifeEventExpense(v, year, inflationFactor) {
   let expense = 0;
-  if (year === v.marriageYear) expense += v.marriageCost * inflationFactor;
-  if (year === v.houseYear) expense += v.houseCost * inflationFactor;
-  if (year >= v.kidsYear && year < v.kidsYear + 15) {
+  if (v.marriageYear > 0 && v.marriageCost > 0 && year === v.marriageYear) expense += v.marriageCost * inflationFactor;
+  if (v.houseYear > 0 && v.houseCost > 0 && year === v.houseYear) expense += v.houseCost * inflationFactor;
+  if (v.kidsYear > 0 && v.kidsAnnualCost > 0 && year >= v.kidsYear && year < v.kidsYear + 15) {
     expense += v.kidsAnnualCost * Math.pow(1 + v.inflationEducation / 100, year - v.kidsYear);
   }
   return expense;
+}
+
+function careerBreakFactorForYear(v, year) {
+  if (!v.breakStart || v.breakStart <= 0 || v.breakMonths <= 0) return 1;
+  const yearOffset = year - v.breakStart;
+  if (yearOffset < 0) return 1;
+  const remainingAtYearStart = v.breakMonths - (yearOffset * 12);
+  if (remainingAtYearStart <= 0) return 1;
+  const breakMonthsThisYear = Math.min(12, remainingAtYearStart);
+  return Math.max(0, (12 - breakMonthsThisYear) / 12);
+}
+
+function fireTargetForYear(v, fireRules, annualExpenseForYear, age) {
+  const baseTarget = annualExpenseForYear * fireRules.multiple;
+  if (!fireRules.coast) return baseTarget;
+  const yearsToRetirement = Math.max(0, v.retirementAge - age);
+  const realReturn = Math.max(0.01, ((v.domesticReturn - v.inflationGeneral) / 100));
+  return baseTarget / Math.pow(1 + realReturn, yearsToRetirement);
 }
 
 function withdrawFromBuckets(state, amount, age, foreignAllocation) {
@@ -163,7 +181,7 @@ function simulate(v, customReturns) {
   let ppf = v.ppfCurrent;
   let nps = v.npsCurrent;
   let debt = v.debtCorpus;
-  let cash = v.cashCorpus;
+  let cash = v.emergencyFund;
   let net = v.netWorth;
 
   let annualIncome = (v.monthlyIncome1 + v.monthlyIncome2) * 12;
@@ -176,8 +194,7 @@ function simulate(v, customReturns) {
   for (let year = startYear; year <= endYear; year++) {
     const age = v.age + (year - startYear);
     const retired = age >= v.retirementAge;
-    const inCareerBreak = year === v.breakStart;
-    const careerBreakFactor = inCareerBreak ? Math.max(0, (12 - v.breakMonths) / 12) : 1;
+    const careerBreakFactor = careerBreakFactorForYear(v, year);
 
     const eqR = customReturns?.domestic?.[year - startYear] ?? v.domesticReturn / 100;
     const usdR = customReturns?.intl?.[year - startYear] ?? v.intlReturnUsd / 100;
@@ -208,10 +225,10 @@ function simulate(v, customReturns) {
       dom += investUsed * 0.7;
       debt += investUsed * 0.2;
       cash += investUsed * 0.1;
-      epf += v.epfAnnual * careerBreakFactor;
+      epf += v.epfMonthly * 12 * careerBreakFactor;
       ppf += v.ppfAnnual;
       nps += v.npsAnnual;
-      contributions.push(investUsed + v.epfAnnual * careerBreakFactor + v.ppfAnnual + v.npsAnnual);
+      contributions.push(investUsed + v.epfMonthly * 12 * careerBreakFactor + v.ppfAnnual + v.npsAnnual);
 
       if (v.monthlyIncome2 > 0 && age < v.retirementAge - 5) {
         dom += v.monthlyIncome2 * 12 * 0.2 * careerBreakFactor;
@@ -269,7 +286,7 @@ function simulate(v, customReturns) {
     }
 
     const total = dom + intl + epf + ppf + nps + debt + cash + net;
-    const fireNumber = annualExpenseForYear * fireRules.multiple;
+    const fireNumber = fireTargetForYear(v, fireRules, annualExpenseForYear, age);
     if (total >= fireNumber && fireYear === null) fireYear = year;
 
     years.push(year);
@@ -282,7 +299,7 @@ function simulate(v, customReturns) {
 
   const finalCorpus = corpus[corpus.length - 1] || 0;
   const success = failYear === null;
-  const fireNumberNow = baseExpense * fireRules.multiple;
+  const fireNumberNow = fireTargetForYear(v, fireRules, baseExpense, v.age);
   const yearsToFI = fireYear ? Math.max(0, fireYear - startYear) : projectionYears;
 
   const milestones = [0.25, 0.5, 0.75, 1].map((m) => {
@@ -301,7 +318,7 @@ function yearsBySavingsRate(v) {
     const invest = annualIncome * sr / 100;
     const annualExp = Math.max(1, annualIncome - invest);
     const fireNum = annualExp * fireRules.multiple;
-    const current = v.domesticEquity + v.intlEquity + v.epfCurrent + v.ppfCurrent + v.npsCurrent + v.debtCorpus + v.cashCorpus + v.netWorth;
+    const current = v.domesticEquity + v.intlEquity + v.epfCurrent + v.ppfCurrent + v.npsCurrent + v.debtCorpus + v.emergencyFund + v.netWorth;
     const r = (v.domesticReturn - v.inflationGeneral) / 100;
     let years = 0;
     let c = current;
@@ -442,22 +459,9 @@ function runAll() {
   renderResult(base, savingsMap, v);
 }
 
-function decodePlanFromURL() {
-  const hash = location.hash.replace('#plan=', '');
-  if (!hash) return null;
-  try {
-    const decoded = JSON.parse(atob(hash));
-    return decoded;
-  } catch {
-    return null;
-  }
-}
-
 function setup() {
-  const fromUrl = decodePlanFromURL();
   const fromStorage = localStorage.getItem('indiaFirePlan');
-  if (fromUrl) loadValues(fromUrl);
-  else if (fromStorage) loadValues(JSON.parse(fromStorage));
+  if (fromStorage) loadValues(JSON.parse(fromStorage));
   else loadValues(defaults);
 
   renderResources();
@@ -476,13 +480,6 @@ function setup() {
     localStorage.removeItem('indiaFirePlan');
     loadValues(defaults);
     runAll();
-  });
-  document.getElementById('sharePlanBtn').addEventListener('click', async () => {
-    const v = valuesFromForm();
-    const encoded = btoa(JSON.stringify(v));
-    const url = `${location.origin}${location.pathname}#plan=${encoded}`;
-    await navigator.clipboard.writeText(url);
-    alert('Shareable URL copied to clipboard.');
   });
 }
 

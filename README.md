@@ -8,7 +8,7 @@ A static, privacy-first FIRE planning simulator customized for India.
 - Supports Lean/Fat/Coast/Barista style planning.
 - Models career breaks, dual income, life events, vacations, migration, and geo-risk (INR vs USD).
 - Includes scenario modes, life-event-aware projection charts, and cashflow visualizations.
-- Generates shareable plans via URL hash.
+- Stores plans locally in your browser for privacy-first usage.
 
 ## Deploy on GitHub Pages
 1. Push to a GitHub repository.
