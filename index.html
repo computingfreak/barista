@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IndiaFIRE Life Simulator</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header>
+    <h1>IndiaFIRE Life Simulator</h1>
+    <p>Design your life, money, and risk for Financial Independence in the Indian context.</p>
+    <div class="chip-row">
+      <button id="loadDefaultsBtn">Load Recommended Defaults</button>
+      <button id="sharePlanBtn">Create Shareable Link</button>
+      <button id="resetBtn" class="secondary">Reset</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1) Core Profile & Income</h2>
+      <div class="grid">
+        <label>Current age <input type="number" id="age" min="18" max="80" step="1" /></label>
+        <label>Planned retirement age <input type="number" id="retirementAge" min="30" max="90" step="1" /></label>
+        <label>Life expectancy <input type="number" id="lifeExpectancy" min="60" max="110" step="1" /></label>
+        <label>Primary monthly post-tax income (₹) <input type="number" id="monthlyIncome1" min="0" step="1000" /></label>
+        <label>Secondary monthly post-tax income (₹) <input type="number" id="monthlyIncome2" min="0" step="1000" /></label>
+        <label>Annual income growth (%) <input type="number" id="incomeGrowth" min="0" max="20" step="0.1" /></label>
+        <label>Current net worth excluding EPF/PPF/NPS (₹) <input type="number" id="netWorth" min="0" step="100000" /></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>2) India Retirement Buckets</h2>
+      <div class="grid">
+        <label>Domestic equity corpus (₹) <input type="number" id="domesticEquity" min="0" step="100000" /></label>
+        <label>International equity corpus (₹) <input type="number" id="intlEquity" min="0" step="10000" /></label>
+        <label>EPF current value (₹) <input type="number" id="epfCurrent" min="0" step="100000" /></label>
+        <label>EPF annual contribution (₹) <input type="number" id="epfAnnual" min="0" step="10000" /></label>
+        <label>PPF current value (₹) <input type="number" id="ppfCurrent" min="0" step="100000" /></label>
+        <label>PPF annual contribution (₹) <input type="number" id="ppfAnnual" min="0" step="10000" /></label>
+        <label>NPS current value (₹) <input type="number" id="npsCurrent" min="0" step="100000" /></label>
+        <label>NPS annual contribution (₹) <input type="number" id="npsAnnual" min="0" step="10000" /></label>
+        <label>Debt/fixed-income corpus (₹) <input type="number" id="debtCorpus" min="0" step="100000" /></label>
+        <label>Cash bucket corpus (₹) <input type="number" id="cashCorpus" min="0" step="100000" /></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3) Spending, Insurance & Lifestyle</h2>
+      <div class="grid">
+        <label>Monthly essential expenses (₹) <input type="number" id="monthlyExpenses" min="0" step="1000" /></label>
+        <label>Monthly investments / SIP (₹) <input type="number" id="monthlyInvest" min="0" step="1000" /></label>
+        <label>Annual insurance total (health + life + term) (₹) <input type="number" id="annualInsurance" min="0" step="10000" /></label>
+        <label>Domestic vacations per year <input type="number" id="domesticTrips" min="0" max="24" step="1" /></label>
+        <label>Average domestic trip cost (₹) <input type="number" id="domesticTripCost" min="0" step="5000" /></label>
+        <label>International vacations per year <input type="number" id="intlTrips" min="0" max="24" step="1" /></label>
+        <label>Average international trip cost (₹) <input type="number" id="intlTripCost" min="0" step="10000" /></label>
+        <label>City lifestyle baseline
+          <select id="cityMode">
+            <option value="tier1">Urban FIRE (Tier-1)</option>
+            <option value="tier2">Tier-2 / Leaner lifestyle</option>
+            <option value="geo">Geo-arbitrage FIRE (India + abroad)</option>
+          </select>
+        </label>
+        <label>Semi-retirement travel budget per year (₹) <input type="number" id="semiRetireTravel" min="0" step="10000" /></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4) Returns, Inflation & Geo-Risk</h2>
+      <div class="grid">
+        <label>Domestic equity expected return (%) <input type="number" id="domesticReturn" min="0" max="25" step="0.1" /></label>
+        <label>International equity expected return (USD, %) <input type="number" id="intlReturnUsd" min="0" max="25" step="0.1" /></label>
+        <label>Debt return (%) <input type="number" id="debtReturn" min="0" max="20" step="0.1" /></label>
+        <label>Cash return (%) <input type="number" id="cashReturn" min="0" max="12" step="0.1" /></label>
+        <label>General inflation (%) <input type="number" id="inflationGeneral" min="0" max="15" step="0.1" /></label>
+        <label>Healthcare inflation (%) <input type="number" id="inflationHealth" min="0" max="20" step="0.1" /></label>
+        <label>Education inflation (%) <input type="number" id="inflationEducation" min="0" max="25" step="0.1" /></label>
+        <label>Lifestyle inflation (%) <input type="number" id="inflationLifestyle" min="0" max="20" step="0.1" /></label>
+        <label>INR depreciation vs USD (%) <input type="number" id="inrDepreciation" min="-5" max="15" step="0.1" /></label>
+        <label>Foreign asset allocation target (%) <input type="number" id="foreignAllocation" min="0" max="80" step="1" /></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>5) FIRE Strategy & Withdrawal</h2>
+      <div class="grid">
+        <label>FIRE type
+          <select id="fireType">
+            <option value="coast">Coast FIRE</option>
+            <option value="regular">Classic FIRE</option>
+            <option value="lean">Lean FIRE</option>
+            <option value="barista">Barista FIRE</option>
+            <option value="fat">Fat FIRE</option>
+          </select>
+        </label>
+        <label>Target withdrawal rate (%) <input type="number" id="withdrawalRate" min="2" max="6" step="0.1" /></label>
+        <label>Dynamic withdrawal guardrail (±%) <input type="number" id="guardrail" min="0" max="20" step="1" /></label>
+        <label>Coast FIRE age goal <input type="number" id="coastAge" min="25" max="70" step="1" /></label>
+        <label>Barista FIRE monthly part-time income (₹) <input type="number" id="baristaIncome" min="0" step="5000" /></label>
+        <label>Bucket strategy: cash years <input type="number" id="cashYears" min="0" max="10" step="1" /></label>
+        <label>Tax drag before retirement (%) <input type="number" id="taxDragPre" min="0" max="20" step="0.1" /></label>
+        <label>Tax drag in retirement (%) <input type="number" id="taxDragPost" min="0" max="20" step="0.1" /></label>
+        <label>Simulation mode
+          <select id="simMode">
+            <option value="base">Base</option>
+            <option value="optimistic">Optimistic</option>
+            <option value="pessimistic">Pessimistic</option>
+            <option value="crash">Market crash stress</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>6) Life Events & Career Breaks</h2>
+      <p class="subtle">Values are in today's rupees and will inflate by your selected bucket rates.</p>
+      <div class="grid">
+        <label>Marriage year (calendar, optional) <input type="number" id="marriageYear" min="2020" max="2100" step="1" /></label>
+        <label>Marriage one-time cost (₹) <input type="number" id="marriageCost" min="0" step="50000" /></label>
+        <label>Home purchase year <input type="number" id="houseYear" min="2020" max="2100" step="1" /></label>
+        <label>Home downpayment (₹) <input type="number" id="houseCost" min="0" step="100000" /></label>
+        <label>Kids education start year <input type="number" id="kidsYear" min="2020" max="2100" step="1" /></label>
+        <label>Annual education cost (₹) <input type="number" id="kidsAnnualCost" min="0" step="50000" /></label>
+        <label>Career break start year <input type="number" id="breakStart" min="2020" max="2100" step="1" /></label>
+        <label>Career break duration (months) <input type="number" id="breakMonths" min="0" max="60" step="1" /></label>
+        <label>Migration scenario
+          <select id="migrationMode">
+            <option value="none">None</option>
+            <option value="temporary">Temporary abroad (5 yrs)</option>
+            <option value="permanent">Permanent abroad</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card actions">
+      <button id="runBtn">Run Simulator</button>
+    </section>
+
+    <section class="card" id="resultsCard">
+      <h2>Results</h2>
+      <div id="kpis" class="kpis"></div>
+      <canvas id="projectionChart" height="140"></canvas>
+      <canvas id="cashflowChart" height="120"></canvas>
+      <div id="milestones" class="milestones"></div>
+      <div id="scenarioTable"></div>
+    </section>
+
+    <section class="card">
+      <h2>Resources: Books, Websites & Tools</h2>
+      <div class="two-col">
+        <div>
+          <h3>Popular books & references</h3>
+          <ol id="bookLinks"></ol>
+        </div>
+        <div>
+          <h3>High-quality FIRE calculators/tools</h3>
+          <ol id="toolLinks"></ol>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Educational simulator only. Not investment, tax, or legal advice.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
