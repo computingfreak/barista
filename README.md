@@ -7,7 +7,7 @@ A static, privacy-first FIRE planning simulator customized for India.
 - Includes Indian planning buckets: EPF, PPF, NPS.
 - Supports Lean/Fat/Coast/Barista style planning.
 - Models career breaks, dual income, life events, vacations, migration, and geo-risk (INR vs USD).
-- Includes Monte Carlo, historical-style rolling backtests, scenario modes, and sequence-of-returns visualization.
+- Includes scenario modes, life-event-aware projection charts, and cashflow visualizations.
 - Generates shareable plans via URL hash.
 
 ## Deploy on GitHub Pages

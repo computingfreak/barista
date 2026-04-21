@@ -88,6 +88,15 @@
     <section class="card">
       <h2>5) FIRE Strategy & Withdrawal</h2>
       <div class="grid">
+        <label>FIRE type
+          <select id="fireType">
+            <option value="coast">Coast FIRE</option>
+            <option value="regular">Classic FIRE</option>
+            <option value="lean">Lean FIRE</option>
+            <option value="barista">Barista FIRE</option>
+            <option value="fat">Fat FIRE</option>
+          </select>
+        </label>
         <label>Target withdrawal rate (%) <input type="number" id="withdrawalRate" min="2" max="6" step="0.1" /></label>
         <label>Dynamic withdrawal guardrail (±%) <input type="number" id="guardrail" min="0" max="20" step="1" /></label>
         <label>Coast FIRE age goal <input type="number" id="coastAge" min="25" max="70" step="1" /></label>
@@ -130,16 +139,13 @@
 
     <section class="card actions">
       <button id="runBtn">Run Simulator</button>
-      <button id="monteCarloBtn" class="secondary">Run Monte Carlo (1000 paths)</button>
-      <button id="historicalBtn" class="secondary">Run Historical Backtest</button>
     </section>
 
     <section class="card" id="resultsCard">
       <h2>Results</h2>
       <div id="kpis" class="kpis"></div>
       <canvas id="projectionChart" height="140"></canvas>
-      <canvas id="sorChart" height="100"></canvas>
-      <canvas id="allocationChart" height="100"></canvas>
+      <canvas id="cashflowChart" height="120"></canvas>
       <div id="milestones" class="milestones"></div>
       <div id="scenarioTable"></div>
     </section>

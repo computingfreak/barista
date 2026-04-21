@@ -4,16 +4,16 @@ const defaults = {
   lifeExpectancy: 90,
   monthlyIncome1: 200000,
   monthlyIncome2: 0,
-  incomeGrowth: 6,
+  incomeGrowth: 0,
   netWorth: 0,
   domesticEquity: 33000000,
   intlEquity: 330000,
-  epfCurrent: 1700000,
-  epfAnnual: 240000,
+  epfCurrent: 1800000,
+  epfAnnual: 396000,
   ppfCurrent: 1300000,
   ppfAnnual: 150000,
   npsCurrent: 0,
-  npsAnnual: 50000,
+  npsAnnual: 0,
   debtCorpus: 1000000,
   cashCorpus: 500000,
   monthlyExpenses: 100000,
@@ -35,6 +35,7 @@ const defaults = {
   inflationLifestyle: 7,
   inrDepreciation: 3,
   foreignAllocation: 15,
+  fireType: 'coast',
   withdrawalRate: 3.8,
   guardrail: 10,
   coastAge: 42,
@@ -55,7 +56,7 @@ const defaults = {
 };
 
 const ids = Object.keys(defaults);
-let projectionChart, sorChart, allocationChart;
+let projectionChart, cashflowChart;
 
 function inr(v) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
@@ -107,6 +108,17 @@ function scenarioTweaks(v) {
   return m;
 }
 
+function fireConfig(v) {
+  const map = {
+    lean: { multiple: 22 },
+    coast: { multiple: 25 },
+    regular: { multiple: 25 },
+    barista: { multiple: 27 },
+    fat: { multiple: 33 },
+  };
+  return map[v.fireType] ?? map.coast;
+}
+
 function lifeEventExpense(v, year, inflationFactor) {
   let expense = 0;
   if (year === v.marriageYear) expense += v.marriageCost * inflationFactor;
@@ -120,10 +132,10 @@ function lifeEventExpense(v, year, inflationFactor) {
 function withdrawFromBuckets(state, amount, age, foreignAllocation) {
   let remaining = Math.max(0, amount);
   const fromCash = Math.min(state.cash, remaining); state.cash -= fromCash; remaining -= fromCash;
-  const fromDebt = Math.min(state.debt, remaining * 0.8); state.debt -= fromDebt; remaining -= fromDebt;
+  const fromDebt = Math.min(state.debt, remaining); state.debt -= fromDebt; remaining -= fromDebt;
   const fromEPF = age >= 58 ? Math.min(state.epf, remaining) : 0; state.epf -= fromEPF; remaining -= fromEPF;
-  const fromPPF = Math.min(state.ppf, remaining * 0.4); state.ppf -= fromPPF; remaining -= fromPPF;
-  const fromNPS = age >= 60 ? Math.min(state.nps, remaining * 0.5) : 0; state.nps -= fromNPS; remaining -= fromNPS;
+  const fromPPF = Math.min(state.ppf, remaining); state.ppf -= fromPPF; remaining -= fromPPF;
+  const fromNPS = age >= 60 ? Math.min(state.nps, remaining) : 0; state.nps -= fromNPS; remaining -= fromNPS;
   const fromEq = Math.min(state.dom + state.intl, remaining);
   const domPart = Math.min(state.dom, fromEq * (1 - foreignAllocation / 100));
   state.dom -= domPart;
@@ -134,11 +146,15 @@ function withdrawFromBuckets(state, amount, age, foreignAllocation) {
 
 function simulate(v, customReturns) {
   const years = [];
+  const ages = [];
   const corpus = [];
   const expenses = [];
   const events = [];
+  const contributions = [];
+  const withdrawals = [];
   const startYear = new Date().getUTCFullYear();
-  const endYear = startYear + (v.lifeExpectancy - v.age);
+  const endYear = startYear + (110 - v.age);
+  const fireRules = fireConfig(v);
 
   let dom = v.domesticEquity;
   let intl = v.intlEquity;
@@ -179,17 +195,28 @@ function simulate(v, customReturns) {
     cash *= (1 + Math.max(0, cashR));
 
     if (!retired) {
-      annualIncome *= (1 + v.incomeGrowth / 100) * careerBreakFactor;
-      dom += v.monthlyInvest * 12 * 0.7;
-      debt += v.monthlyInvest * 12 * 0.2;
-      cash += v.monthlyInvest * 12 * 0.1;
-      epf += v.epfAnnual;
+      annualIncome *= (1 + v.incomeGrowth / 100);
+      const effectiveIncome = annualIncome * careerBreakFactor;
+      const plannedInvest = v.monthlyInvest * 12;
+      const maxAffordableInvest = Math.max(0, effectiveIncome - annualExpense);
+      const annualInvest = Math.min(plannedInvest, maxAffordableInvest);
+      const isCoastMode = v.fireType === 'coast';
+      const coastStop = isCoastMode && age >= v.coastAge;
+      const investUsed = coastStop ? 0 : annualInvest;
+
+      dom += investUsed * 0.7;
+      debt += investUsed * 0.2;
+      cash += investUsed * 0.1;
+      epf += v.epfAnnual * careerBreakFactor;
       ppf += v.ppfAnnual;
       nps += v.npsAnnual;
+      contributions.push(investUsed + v.epfAnnual * careerBreakFactor + v.ppfAnnual + v.npsAnnual);
 
       if (v.monthlyIncome2 > 0 && age < v.retirementAge - 5) {
-        dom += v.monthlyIncome2 * 12 * 0.2;
+        dom += v.monthlyIncome2 * 12 * 0.2 * careerBreakFactor;
       }
+    } else {
+      contributions.push(0);
     }
 
     annualExpense *= (1 + (v.inflationGeneral + v.inflationLifestyle * 0.3 + v.inflationHealth * 0.2) / 100);
@@ -239,94 +266,38 @@ function simulate(v, customReturns) {
     }
 
     const total = dom + intl + epf + ppf + nps + debt + cash + net;
-    const fireNumber = annualExpenseForYear / (v.withdrawalRate / 100);
+    const fireNumber = annualExpenseForYear * fireRules.multiple;
     if (total >= fireNumber && fireYear === null) fireYear = year;
 
     years.push(year);
+    ages.push(age);
     corpus.push(total);
     expenses.push(annualExpenseForYear);
     events.push(inflatedEventExpense + withdrawalNeed);
+    withdrawals.push(withdrawalNeed);
   }
 
   const finalCorpus = corpus[corpus.length - 1] || 0;
   const success = failYear === null;
-  const fireNumberNow = (baseExpense) / (v.withdrawalRate / 100);
-  const yearsToFI = fireYear ? fireYear - startYear : null;
+  const fireNumberNow = baseExpense * fireRules.multiple;
+  const yearsToFI = fireYear ? Math.max(0, fireYear - startYear) : (endYear - startYear);
 
   const milestones = [0.25, 0.5, 0.75, 1].map((m) => {
     const idx = corpus.findIndex((c) => c >= fireNumberNow * m);
     return { pct: m, year: idx >= 0 ? years[idx] : null };
   });
 
-  return { years, corpus, expenses, events, success, fireYear, failYear, yearsToFI, fireNumberNow, finalCorpus, milestones };
-}
-
-function randomNormal(mean = 0, std = 1) {
-  let u = 0, v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
-
-function runMonteCarlo(v, runs = 1000) {
-  let success = 0;
-  const ending = [];
-  const years = v.lifeExpectancy - v.age + 1;
-  for (let i = 0; i < runs; i++) {
-    const customReturns = {
-      domestic: Array.from({ length: years }, () => (v.domesticReturn + randomNormal(0, 16)) / 100),
-      intl: Array.from({ length: years }, () => (v.intlReturnUsd + randomNormal(0, 18)) / 100),
-      debt: Array.from({ length: years }, () => Math.max(-0.02, (v.debtReturn + randomNormal(0, 3)) / 100)),
-      cash: Array.from({ length: years }, () => Math.max(0, (v.cashReturn + randomNormal(0, 1.5)) / 100)),
-    };
-    const result = simulate(v, customReturns);
-    if (result.success) success++;
-    ending.push(result.finalCorpus);
-  }
-  ending.sort((a, b) => a - b);
-  return {
-    successRate: (success / runs) * 100,
-    p10: ending[Math.floor(runs * 0.1)],
-    p50: ending[Math.floor(runs * 0.5)],
-    p90: ending[Math.floor(runs * 0.9)],
-  };
-}
-
-function historicalBacktest(v) {
-  const historical = [
-    { d: 0.42, i: 0.35, debt: 0.08 }, { d: -0.52, i: -0.38, debt: 0.07 }, { d: 0.23, i: 0.16, debt: 0.06 },
-    { d: 0.51, i: 0.27, debt: 0.07 }, { d: 0.08, i: 0.05, debt: 0.07 }, { d: -0.05, i: -0.09, debt: 0.08 },
-    { d: 0.13, i: 0.11, debt: 0.07 }, { d: 0.31, i: 0.19, debt: 0.07 }, { d: 0.04, i: 0.08, debt: 0.07 },
-    { d: -0.12, i: -0.2, debt: 0.08 }, { d: 0.76, i: 0.34, debt: 0.08 }, { d: 0.03, i: 0.07, debt: 0.07 },
-    { d: 0.29, i: 0.12, debt: 0.07 }, { d: 0.11, i: 0.15, debt: 0.07 }, { d: -0.03, i: -0.06, debt: 0.07 },
-  ];
-  const years = v.lifeExpectancy - v.age + 1;
-  const paths = [];
-  for (let offset = 0; offset < historical.length; offset++) {
-    const customReturns = {
-      domestic: Array.from({ length: years }, (_, y) => historical[(y + offset) % historical.length].d),
-      intl: Array.from({ length: years }, (_, y) => historical[(y + offset) % historical.length].i),
-      debt: Array.from({ length: years }, (_, y) => historical[(y + offset) % historical.length].debt),
-      cash: Array.from({ length: years }, () => v.cashReturn / 100),
-    };
-    const r = simulate(v, customReturns);
-    paths.push(r.finalCorpus);
-  }
-  paths.sort((a, b) => a - b);
-  return {
-    worst: paths[0],
-    median: paths[Math.floor(paths.length / 2)],
-    best: paths[paths.length - 1],
-  };
+  return { years, ages, corpus, expenses, events, contributions, withdrawals, success, fireYear, failYear, yearsToFI, fireNumberNow, finalCorpus, milestones };
 }
 
 function yearsBySavingsRate(v) {
   const annualIncome = (v.monthlyIncome1 + v.monthlyIncome2) * 12;
+  const fireRules = fireConfig(v);
   const rows = [];
   for (let sr = 10; sr <= 70; sr += 10) {
     const invest = annualIncome * sr / 100;
     const annualExp = Math.max(1, annualIncome - invest);
-    const fireNum = annualExp / (v.withdrawalRate / 100);
+    const fireNum = annualExp * fireRules.multiple;
     const current = v.domesticEquity + v.intlEquity + v.epfCurrent + v.ppfCurrent + v.npsCurrent + v.debtCorpus + v.cashCorpus + v.netWorth;
     const r = (v.domesticReturn - v.inflationGeneral) / 100;
     let years = 0;
@@ -343,34 +314,33 @@ function yearsBySavingsRate(v) {
 function drawCharts(result, v) {
   const ctx = document.getElementById('projectionChart');
   if (projectionChart) projectionChart.destroy();
+  const fireTargetSeries = result.ages.map((_, i) => result.expenses[i] * fireConfig(v).multiple);
+  const eventPoints = result.events
+    .map((ev, i) => (ev > 0 ? { x: result.ages[i], y: result.corpus[i] } : null))
+    .filter(Boolean);
   projectionChart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: result.years,
+      labels: result.ages,
       datasets: [
-        { label: 'Projected corpus', data: result.corpus, borderColor: '#6bdcff' },
-        { label: 'Annual expense', data: result.expenses, borderColor: '#ffcc66' },
-        { label: 'Event + withdrawal pressure', data: result.events, borderColor: '#ff8f8f' },
+        { label: 'Corpus vs age', data: result.corpus, borderColor: '#6bdcff' },
+        { label: 'FIRE target', data: fireTargetSeries, borderColor: '#ffcc66', borderDash: [6, 4] },
+        { label: 'Life event markers', data: eventPoints, showLine: false, parsing: false, pointStyle: 'triangle', pointRadius: 6, borderColor: '#ff8f8f', backgroundColor: '#ff8f8f' },
       ],
     },
   });
 
-  const sor = result.corpus.slice(1).map((v2, i) => ((v2 / result.corpus[i]) - 1) * 100);
-  const sorCtx = document.getElementById('sorChart');
-  if (sorChart) sorChart.destroy();
-  sorChart = new Chart(sorCtx, {
+  const cfCtx = document.getElementById('cashflowChart');
+  if (cashflowChart) cashflowChart.destroy();
+  cashflowChart = new Chart(cfCtx, {
     type: 'bar',
-    data: { labels: result.years.slice(1), datasets: [{ label: 'Sequence-of-returns (%)', data: sor, backgroundColor: '#8affb8' }] },
-  });
-
-  const allocCtx = document.getElementById('allocationChart');
-  if (allocationChart) allocationChart.destroy();
-  const ageBasedEquity = Math.max(25, Math.min(85, 100 - v.age + (v.retirementAge - v.age > 15 ? 5 : -5)));
-  allocationChart = new Chart(allocCtx, {
-    type: 'doughnut',
     data: {
-      labels: ['Equity', 'Debt', 'Cash'],
-      datasets: [{ data: [ageBasedEquity, 100 - ageBasedEquity - 10, 10], backgroundColor: ['#6bdcff', '#7887ff', '#8affb8'] }],
+      labels: result.ages,
+      datasets: [
+        { label: 'Annual contributions', data: result.contributions, backgroundColor: '#8affb8' },
+        { label: 'Annual expenses', data: result.expenses, backgroundColor: '#7887ff' },
+        { label: 'Retirement withdrawals', data: result.withdrawals, backgroundColor: '#ff8f8f' },
+      ],
     },
   });
 }
@@ -389,6 +359,19 @@ function renderResources() {
     ['The Little Book of Common Sense Investing', 'https://www.wiley.com/en-us/The+Little+Book+of+Common+Sense+Investing-p-9781119404507'],
     ['Bogleheads Wiki', 'https://www.bogleheads.org/wiki/Main_Page'],
     ['FreeFincal', 'https://freefincal.com/'],
+    ['The Richest Engineer', 'https://www.abhishekumar.in/'],
+    ['I Will Teach You To Be Rich', 'https://www.iwillteachyoutoberich.com/'],
+    ['The Almanack of Naval Ravikant', 'https://www.navalmanack.com/'],
+    ['Against The Gods: The Story of Risk', 'https://www.penguinrandomhouse.com/books/324918/against-the-gods-by-peter-l-bernstein/'],
+    ['The Dhandho Investor', 'https://dhandho.com/'],
+    ['A Random Walk Down Wall Street', 'https://wwnorton.com/books/9781324035435'],
+    ['The Intelligent Investor', 'https://www.harpercollins.com/products/the-intelligent-investor-benjamin-graham?variant=32207562715170'],
+    ['When Money Dies', 'https://www.penguinrandomhouse.com/books/246448/when-money-dies-by-adam-fergusson/'],
+    ['The Great Depression: A Diary', 'https://www.penguinrandomhouse.com/books/572928/the-great-depression-by-benjamin-roth/'],
+    ['The Black Swan', 'https://www.penguinrandomhouse.com/books/176227/the-black-swan-by-nassim-nicholas-taleb/'],
+    ['Antifragile', 'https://www.penguinrandomhouse.com/books/176226/antifragile-by-nassim-nicholas-taleb/'],
+    ['Just Keep Buying', 'https://www.nickmagiulli.com/justkeepbuying/'],
+    ['Die With Zero', 'https://www.hachettebookgroup.com/titles/bill-perkins/die-with-zero/9780358567097/'],
   ];
 
   const tools = [
@@ -418,14 +401,14 @@ function renderResources() {
   document.getElementById('toolLinks').innerHTML = tools.map(([n, u]) => `<li><a href="${u}" target="_blank" rel="noreferrer">${n}</a></li>`).join('');
 }
 
-function renderResult(base, monte, hist, savingsMap, v) {
+function renderResult(base, savingsMap, v) {
   const kpis = [
     ['FIRE number (today)', inr(base.fireNumberNow)],
     ['FI year', base.fireYear || 'Not reached'],
-    ['Years to FI', base.yearsToFI ?? 'N/A'],
+    ['Years to FI', base.yearsToFI],
     ['Corpus at life expectancy', inr(base.finalCorpus)],
-    ['Monte Carlo success', `${monte.successRate.toFixed(1)}%`],
-    ['Historical worst case corpus', inr(hist.worst)],
+    ['Plan health', base.success ? 'On track' : `Shortfall risk from ${base.failYear}`],
+    ['Selected FIRE type', v.fireType],
   ];
   document.getElementById('kpis').innerHTML = kpis.map(([k, v2]) => `<div class="kpi"><span>${k}</span><strong>${v2}</strong></div>`).join('');
 
@@ -438,8 +421,7 @@ function renderResult(base, monte, hist, savingsMap, v) {
       <thead><tr><th>Savings Rate</th><th>Years to FI (approx)</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <p>Monte Carlo corpus distribution: P10 ${inr(monte.p10)}, P50 ${inr(monte.p50)}, P90 ${inr(monte.p90)}.</p>
-    <p>Historical rolling outcomes: Worst ${inr(hist.worst)}, Median ${inr(hist.median)}, Best ${inr(hist.best)}.</p>
+    <p>Life-event markers are shown as red triangles on the corpus chart.</p>
   `;
 
   drawCharts(base, v);
@@ -449,10 +431,8 @@ function runAll() {
   const raw = valuesFromForm();
   const v = scenarioTweaks(applyCityMode(raw));
   const base = simulate(v);
-  const monte = runMonteCarlo(v, 1000);
-  const hist = historicalBacktest(v);
   const savingsMap = yearsBySavingsRate(v);
-  renderResult(base, monte, hist, savingsMap, v);
+  renderResult(base, savingsMap, v);
 }
 
 function decodePlanFromURL() {
@@ -481,8 +461,6 @@ function setup() {
     localStorage.setItem('indiaFirePlan', JSON.stringify(v));
     runAll();
   });
-  document.getElementById('monteCarloBtn').addEventListener('click', runAll);
-  document.getElementById('historicalBtn').addEventListener('click', runAll);
   document.getElementById('loadDefaultsBtn').addEventListener('click', () => {
     loadValues(defaults);
     runAll();
