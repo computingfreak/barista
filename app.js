@@ -153,7 +153,8 @@ function simulate(v, customReturns) {
   const contributions = [];
   const withdrawals = [];
   const startYear = new Date().getUTCFullYear();
-  const endYear = startYear + (110 - v.age);
+  const projectionYears = Math.max(0, v.lifeExpectancy - v.age);
+  const endYear = startYear + projectionYears;
   const fireRules = fireConfig(v);
 
   let dom = v.domesticEquity;
@@ -235,7 +236,9 @@ function simulate(v, customReturns) {
 
     let withdrawalNeed = 0;
     if (retired) {
-      const baristaIncome = v.baristaIncome * 12 * (age <= v.retirementAge + 10 ? 1 : 0.4);
+      const baristaIncome = v.fireType === 'barista'
+        ? v.baristaIncome * 12 * (age <= v.retirementAge + 10 ? 1 : 0.4)
+        : 0;
       withdrawalNeed = Math.max(0, annualExpenseForYear + v.semiRetireTravel - baristaIncome + inflatedEventExpense);
 
       const target = (annualExpenseForYear / (v.withdrawalRate / 100));
@@ -273,14 +276,14 @@ function simulate(v, customReturns) {
     ages.push(age);
     corpus.push(total);
     expenses.push(annualExpenseForYear);
-    events.push(inflatedEventExpense + withdrawalNeed);
+    events.push(inflatedEventExpense);
     withdrawals.push(withdrawalNeed);
   }
 
   const finalCorpus = corpus[corpus.length - 1] || 0;
   const success = failYear === null;
   const fireNumberNow = baseExpense * fireRules.multiple;
-  const yearsToFI = fireYear ? Math.max(0, fireYear - startYear) : (endYear - startYear);
+  const yearsToFI = fireYear ? Math.max(0, fireYear - startYear) : projectionYears;
 
   const milestones = [0.25, 0.5, 0.75, 1].map((m) => {
     const idx = corpus.findIndex((c) => c >= fireNumberNow * m);
@@ -312,7 +315,9 @@ function yearsBySavingsRate(v) {
 }
 
 function drawCharts(result, v) {
+  if (typeof Chart === 'undefined') return;
   const ctx = document.getElementById('projectionChart');
+  if (!ctx) return;
   if (projectionChart) projectionChart.destroy();
   const fireTargetSeries = result.ages.map((_, i) => result.expenses[i] * fireConfig(v).multiple);
   const eventPoints = result.events
@@ -331,6 +336,7 @@ function drawCharts(result, v) {
   });
 
   const cfCtx = document.getElementById('cashflowChart');
+  if (!cfCtx) return;
   if (cashflowChart) cashflowChart.destroy();
   cashflowChart = new Chart(cfCtx, {
     type: 'bar',
@@ -402,9 +408,10 @@ function renderResources() {
 }
 
 function renderResult(base, savingsMap, v) {
+  const fiYearDisplay = base.fireYear || `Not reached by age ${v.lifeExpectancy}`;
   const kpis = [
     ['FIRE number (today)', inr(base.fireNumberNow)],
-    ['FI year', base.fireYear || 'Not reached'],
+    ['FI year', fiYearDisplay],
     ['Years to FI', base.yearsToFI],
     ['Corpus at life expectancy', inr(base.finalCorpus)],
     ['Plan health', base.success ? 'On track' : `Shortfall risk from ${base.failYear}`],
