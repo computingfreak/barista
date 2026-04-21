@@ -117,6 +117,21 @@ function lifeEventExpense(v, year, inflationFactor) {
   return expense;
 }
 
+function withdrawFromBuckets(state, amount, age, foreignAllocation) {
+  let remaining = Math.max(0, amount);
+  const fromCash = Math.min(state.cash, remaining); state.cash -= fromCash; remaining -= fromCash;
+  const fromDebt = Math.min(state.debt, remaining * 0.8); state.debt -= fromDebt; remaining -= fromDebt;
+  const fromEPF = age >= 58 ? Math.min(state.epf, remaining) : 0; state.epf -= fromEPF; remaining -= fromEPF;
+  const fromPPF = Math.min(state.ppf, remaining * 0.4); state.ppf -= fromPPF; remaining -= fromPPF;
+  const fromNPS = age >= 60 ? Math.min(state.nps, remaining * 0.5) : 0; state.nps -= fromNPS; remaining -= fromNPS;
+  const fromEq = Math.min(state.dom + state.intl, remaining);
+  const domPart = Math.min(state.dom, fromEq * (1 - foreignAllocation / 100));
+  state.dom -= domPart;
+  state.intl -= (fromEq - domPart);
+  remaining -= fromEq;
+  return remaining;
+}
+
 function simulate(v, customReturns) {
   const years = [];
   const corpus = [];
@@ -179,20 +194,31 @@ function simulate(v, customReturns) {
 
     annualExpense *= (1 + (v.inflationGeneral + v.inflationLifestyle * 0.3 + v.inflationHealth * 0.2) / 100);
     const inflatedEventExpense = lifeEventExpense(v, year, Math.pow(1 + v.inflationGeneral / 100, year - startYear));
+    let migrationFactor = 1;
+    if (v.migrationMode === 'temporary' && year >= startYear + 6 && year <= startYear + 10) migrationFactor = 1.25;
+    if (v.migrationMode === 'permanent' && year >= v.retirementAge - v.age + startYear) migrationFactor = 1.2;
+    const annualExpenseForYear = annualExpense * migrationFactor;
+
+    if (!retired && inflatedEventExpense > 0) {
+      const preRetireState = { dom, intl, epf, ppf, nps, debt, cash };
+      const eventShortfall = withdrawFromBuckets(preRetireState, inflatedEventExpense, age, v.foreignAllocation);
+      ({ dom, intl, epf, ppf, nps, debt, cash } = preRetireState);
+      if (eventShortfall > 0 && failYear === null) failYear = year;
+    }
 
     let withdrawalNeed = 0;
     if (retired) {
       const baristaIncome = v.baristaIncome * 12 * (age <= v.retirementAge + 10 ? 1 : 0.4);
-      withdrawalNeed = Math.max(0, annualExpense + v.semiRetireTravel - baristaIncome + inflatedEventExpense);
+      withdrawalNeed = Math.max(0, annualExpenseForYear + v.semiRetireTravel - baristaIncome + inflatedEventExpense);
 
-      const target = (annualExpense / (v.withdrawalRate / 100));
+      const target = (annualExpenseForYear / (v.withdrawalRate / 100));
       const upper = target * (1 + v.guardrail / 100);
       const lower = target * (1 - v.guardrail / 100);
       const totalBefore = dom + intl + epf + ppf + nps + debt + cash + net;
       if (totalBefore < lower) withdrawalNeed *= 0.92;
       if (totalBefore > upper) withdrawalNeed *= 1.06;
 
-      const cashTarget = annualExpense * v.cashYears;
+      const cashTarget = annualExpenseForYear * v.cashYears;
       if (cash < cashTarget) {
         const fill = Math.min((dom + debt) * 0.08, cashTarget - cash);
         dom -= fill * 0.7;
@@ -200,17 +226,9 @@ function simulate(v, customReturns) {
         cash += fill;
       }
 
-      let remaining = withdrawalNeed;
-      const fromCash = Math.min(cash, remaining); cash -= fromCash; remaining -= fromCash;
-      const fromDebt = Math.min(debt, remaining * 0.8); debt -= fromDebt; remaining -= fromDebt;
-      const fromEPF = age >= 58 ? Math.min(epf, remaining) : 0; epf -= fromEPF; remaining -= fromEPF;
-      const fromPPF = Math.min(ppf, remaining * 0.4); ppf -= fromPPF; remaining -= fromPPF;
-      const fromNPS = age >= 60 ? Math.min(nps, remaining * 0.5) : 0; nps -= fromNPS; remaining -= fromNPS;
-      const fromEq = Math.min(dom + intl, remaining);
-      const domPart = Math.min(dom, fromEq * (1 - v.foreignAllocation / 100));
-      dom -= domPart;
-      intl -= (fromEq - domPart);
-      remaining -= fromEq;
+      const retiredState = { dom, intl, epf, ppf, nps, debt, cash };
+      const remaining = withdrawFromBuckets(retiredState, withdrawalNeed, age, v.foreignAllocation);
+      ({ dom, intl, epf, ppf, nps, debt, cash } = retiredState);
 
       if (remaining > 0 && failYear === null) failYear = year;
     }
@@ -220,20 +238,13 @@ function simulate(v, customReturns) {
       intl *= 0.78;
     }
 
-    if (v.migrationMode === 'temporary' && year >= startYear + 6 && year <= startYear + 10) {
-      annualExpense *= 1.25;
-    }
-    if (v.migrationMode === 'permanent' && year >= v.retirementAge - v.age + startYear) {
-      annualExpense *= 1.2;
-    }
-
     const total = dom + intl + epf + ppf + nps + debt + cash + net;
-    const fireNumber = annualExpense / (v.withdrawalRate / 100);
+    const fireNumber = annualExpenseForYear / (v.withdrawalRate / 100);
     if (total >= fireNumber && fireYear === null) fireYear = year;
 
     years.push(year);
     corpus.push(total);
-    expenses.push(annualExpense);
+    expenses.push(annualExpenseForYear);
     events.push(inflatedEventExpense + withdrawalNeed);
   }
 
@@ -316,7 +327,7 @@ function yearsBySavingsRate(v) {
     const invest = annualIncome * sr / 100;
     const annualExp = Math.max(1, annualIncome - invest);
     const fireNum = annualExp / (v.withdrawalRate / 100);
-    const current = v.domesticEquity + v.intlEquity + v.epfCurrent + v.ppfCurrent + v.npsCurrent + v.debtCorpus + v.cashCorpus;
+    const current = v.domesticEquity + v.intlEquity + v.epfCurrent + v.ppfCurrent + v.npsCurrent + v.debtCorpus + v.cashCorpus + v.netWorth;
     const r = (v.domesticReturn - v.inflationGeneral) / 100;
     let years = 0;
     let c = current;
